@@ -1,0 +1,6 @@
+*.o
+external
+openGLHelper
+*.jpg
+hw2
+.DS_Store
