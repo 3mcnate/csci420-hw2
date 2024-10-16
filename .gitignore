@@ -4,3 +4,4 @@ openGLHelper
 *.jpg
 hw2
 .DS_Store
+.vscode

@@ -58,19 +58,6 @@ typedef enum
 } CONTROL_STATE;
 CONTROL_STATE controlState = ROTATE;
 
-typedef enum
-{
-  POINTS,
-  LINES,
-  TRIANGLES,
-  SMOOTH_TRIANGLES
-} RENDER_MODE;
-RENDER_MODE renderMode = POINTS;
-
-int shaderMode = 0;
-float scale = 1;
-float exponent = 1;
-
 // Transformations of the terrain.
 float terrainRotate[3] = {0.0f, 0.0f, 0.0f};
 // terrainRotate[0] gives the rotation around x-axis (in degrees)
@@ -84,42 +71,17 @@ int windowWidth = 1280;
 int windowHeight = 720;
 char windowTitle[512] = "CSCI 420 Homework 2";
 
-// Number of vertices in the single triangle (starter code).
-int numPointVertices;
-int numLineVertices;
-int numTriangleVertices;
+// Number of vertices in the spline
+int numSplineVertices;
 
 // CSCI 420 helper classes.
 OpenGLMatrix matrix;
 PipelineProgram pipelineProgram;
 
-// points
-VBO pointsVboVertices;
-VBO pointsVboColors;
-VAO pointsVao;
-
-// lines
-VBO linesVboVertices;
-VBO linesVboColors;
-VAO linesVao;
-
-// triangles
-VBO trianglesVboVertices;
-VBO trianglesVboColors;
-VAO trianglesVao;
-
-// smooth triangles
-VBO centerSmoothTriangesVBO;
-VBO leftSmoothTriangesVBO;
-VBO rightSmoothTriangesVBO;
-VBO upSmoothTriangesVBO;
-VBO downSmoothTriangesVBO;
-VBO colorSmoothTriangesVBO;
-VAO smoothTrianglesVAO;
-
-bool animate = false;
-auto lastScreenshot = std::chrono::system_clock::now();
-int screenshotCounter = 0;
+// spline
+VBO splinesVboVertices;
+VBO splinesVboColors;
+VAO splinesVao;
 
 // Write a screenshot to the specified filename.
 void saveScreenshot(const char *filename)
@@ -139,14 +101,6 @@ void idleFunc()
 {
   // Do some stuff...
   // For example, here, you can save the screenshots to disk (to make the animation).
-  auto now = std::chrono::system_clock::now();
-  if (animate && std::chrono::duration_cast<std::chrono::milliseconds>(now - lastScreenshot).count() >= 100 && screenshotCounter < 300)
-  {
-    char buf[32];
-    snprintf(buf, 32, "animation1/%03d.jpg", screenshotCounter++);
-    saveScreenshot(buf);
-    lastScreenshot = std::chrono::system_clock::now();
-  }
 
   // Notify GLUT that it should call displayFunc.
   glutPostRedisplay();
@@ -305,47 +259,7 @@ void keyboardFunc(unsigned char key, int x, int y)
   case 'z':
     zPressed = true;
     break;
-
-  case '1':
-    renderMode = POINTS;
-    shaderMode = 0;
-    break;
-
-  case '2':
-    renderMode = LINES;
-    shaderMode = 0;
-    break;
-
-  case '3':
-    renderMode = TRIANGLES;
-    shaderMode = 0;
-    break;
-
-  case '4':
-    renderMode = SMOOTH_TRIANGLES;
-    shaderMode = 1;
-    break;
-
-  case '+':
-    scale *= 2.0;
-    break;
-
-  case '-':
-    scale /= 2.0;
-    break;
-
-  case '9':
-    exponent *= 2.0;
-    break;
-
-  case '0':
-    exponent /= 2.0;
-    break;
   }
-
-  pipelineProgram.SetUniformVariablei("mode", shaderMode);
-  pipelineProgram.SetUniformVariablef("scale", scale);
-  pipelineProgram.SetUniformVariablef("exponent", exponent);
 }
 
 void keyboardUpFunc(unsigned char key, int x, int y)
@@ -405,28 +319,8 @@ void displayFunc()
 
   // Execute the rendering.
   // Bind the VAO that we want to render. Remember, one object = one VAO.
-  switch (renderMode)
-  {
-  case POINTS:
-    pointsVao.Bind();
-    glDrawArrays(GL_POINTS, 0, numPointVertices); // Render the VAO, by rendering "numPointVertices", starting from vertex 0.
-    break;
-
-  case LINES:
-    linesVao.Bind();
-    glDrawArrays(GL_LINES, 0, numLineVertices);
-    break;
-
-  case TRIANGLES:
-    trianglesVao.Bind();
-    glDrawArrays(GL_TRIANGLES, 0, numTriangleVertices);
-    break;
-
-  case SMOOTH_TRIANGLES:
-    smoothTrianglesVAO.Bind();
-    glDrawArrays(GL_TRIANGLES, 0, numTriangleVertices);
-    break;
-  }
+  splinesVao.Bind();
+  glDrawArrays(GL_LINES, 0, numSplineVertices);
 
   // Swap the double-buffers.
   glutSwapBuffers();
@@ -434,14 +328,6 @@ void displayFunc()
 
 void initScene(int argc, char *argv[])
 {
-  // Load the image from a jpeg disk file into main memory.
-  std::unique_ptr<ImageIO> heightmapImage = std::make_unique<ImageIO>();
-  if (heightmapImage->loadJPEG(argv[1]) != ImageIO::OK)
-  {
-    cout << "Error reading image " << argv[1] << "." << endl;
-    exit(EXIT_FAILURE);
-  }
-
   // Set the background color.
   glClearColor(0.0f, 0.0f, 0.0f, 1.0f); // Black color.
 
@@ -469,197 +355,94 @@ void initScene(int argc, char *argv[])
   // From that point on, exactly one pipeline program is bound at any moment of time.
   pipelineProgram.Bind();
 
-  const int h = heightmapImage->getHeight();
-  const int w = heightmapImage->getWidth();
-
-  const float resolution = h / 4;
-  const float xBias = w / 2;
-  const float zBias = h / 2;
-
   /*****************************************************************
-                                POINTS
-  *****************************************************************/
-
-  // (x,y,z) coordinates for each vertex
-  numPointVertices = h * w;
-  std::unique_ptr<float[]> pointPositions = std::make_unique<float[]>(numPointVertices * 3);
-  std::unique_ptr<float[]> pointColors = std::make_unique<float[]>(numPointVertices * 4);
-
-  int vIndex = 0;
-  int cIndex = 0;
-
-  // setting point positions
-  for (int y = 0; y < h; ++y)
-  {
-    for (int x = 0; x < w; ++x)
-    {
-      unsigned char pixel = heightmapImage->getPixel(x, y, 0);
-      Vertex vertex = createVertex(xBias, zBias, resolution, pixel, x, y);
-      addVertexToVBO(pointPositions, pointColors, vIndex, cIndex, vertex);
-    }
-  }
-
-  /*****************************************************************
-                                LINES
+                              MILESTONE
   *****************************************************************/
 
   // creating line buffers
-  numLineVertices = 2 * ((h * (w - 1)) + (w * (h - 1))); // deduced from hw1-helper slides
-  std::unique_ptr<float[]> lineVertices = std::make_unique<float[]>(numLineVertices * 3);
-  std::unique_ptr<float[]> lineColors = std::make_unique<float[]>(numLineVertices * 4);
+  vector<float> splineVertices;
+  vector<float> splineColors;
 
-  // **IMPORTANT**
-  vIndex = 0;
-  cIndex = 0;
-
-  // setting vertices
-  for (int y = 0; y < h; ++y)
+  // for each set of 4 control points, create a curve
+  for (int i = 0; i + 4 < spline.numControlPoints; ++i)
   {
-    for (int x = 0; x < w; ++x)
-    {
-      // create first point
-      Vertex vertex1 = createVertex(xBias, zBias, resolution, heightmapImage->getPixel(x, y, 0), x, y);
+    // s = 1/2
+    float s = 0.5f;
 
-      // create line in y-direction if not out of bounds
-      if (y < h - 1)
+    /*
+      M = [  -s  2-s  s-2    s  ]
+          [  2s  s-3  3-2s  -s  ]
+          [  -s   0    s     0  ]
+          [  0    1    0     0  ]
+    */
+    vector<float> M = {-s, 2 * s, -s, 0,
+                       2 - s, s - 3, 0, 1,
+                       s - 2, 3 - (2 * s), s, 0,
+                       s, -s, 0, 0};
+
+    /*
+      C = [ x1  y1  z1 ]
+          [ x2  y2  z2 ]
+          [ x3  y3  z3 ]
+          [ x4  y4  z4 ]
+    */
+    vector<float> C;
+    for (int j = 0; j < 4; ++j)
+      C.push_back(spline.points[i + j].x);
+
+    for (int j = 0; j < 4; ++j)
+      C.push_back(spline.points[i + j].y);
+
+    for (int j = 0; j < 4; ++j)
+      C.push_back(spline.points[i + j].z);
+
+    // cache result R = M * C for efficiency
+    float R[12];
+    MultiplyMatrices(4, 4, 3, M.data(), C.data(), R);
+
+    // draw the spline
+    for (float u = 0.0f; u < 0.9999f; u += 0.001f)
+    {
+      vector<float> uMatrix = {u * u * u, u * u, u, 1};
+      float point[3];
+      MultiplyMatrices(1, 4, 3, uMatrix.data(), R, point);
+
+      // add vertices to VBO
+      // Note: we must add each vertex except the first and last twice to connect the lines.
+      bool addOnlyOnce = (i == 0 && u == 0.0f) || ((i + 5) == (spline.numControlPoints) && (u >= 0.9985f));
+
+      for (int j = 0; j < (addOnlyOnce ? 1 : 2); ++j)
       {
-        Vertex vertex2 = createVertex(xBias, zBias, resolution, heightmapImage->getPixel(x, y + 1, 0), x, y + 1);
-        addLineToVBO(lineVertices, lineColors, vIndex, cIndex, vertex1, vertex2);
+
+        splineVertices.push_back(point[0]);
+        splineVertices.push_back(point[1]);
+        splineVertices.push_back(point[2]);
       }
 
-      // create line in x-direction if not out of bounds
-      if (x < w - 1)
-      {
-        Vertex vertex2 = createVertex(xBias, zBias, resolution, heightmapImage->getPixel(x + 1, y, 0), x + 1, y);
-        addLineToVBO(lineVertices, lineColors, vIndex, cIndex, vertex1, vertex2);
-      }
+      // add colors to VBO
+      for (int j = 0; j < (addOnlyOnce ? 4 : 8); ++j)
+        splineColors.push_back(1.0f);
     }
   }
 
-  /*****************************************************************
-                                TRIANGLES
-  *****************************************************************/
+  numSplineVertices = (int)splineVertices.size() / 3;
+  splinesVboVertices.Gen(numSplineVertices, 3, splineVertices.data(), GL_STATIC_DRAW); // 3 values per position
+  splinesVboColors.Gen(numSplineVertices, 4, splineColors.data(), GL_STATIC_DRAW);     // 4 values per color
 
-  // creating triangle buffers
-  numTriangleVertices = 6 * (h - 1) * (w - 1); // deduced from hw1-helper slides
-  std::unique_ptr<float[]> triangleVertices = std::make_unique<float[]>(numTriangleVertices * 3);
-  std::unique_ptr<float[]> triangleColors = std::make_unique<float[]>(numTriangleVertices * 4);
-
-  // **IMPORTANT**
-  vIndex = 0;
-  cIndex = 0;
-
-  // setting vertices
-  for (int y = 0; y < h - 1; ++y)
-  {
-    for (int x = 0; x < w - 1; ++x)
-    {
-      // bottom triangle
-      Vertex vertex1 = createVertex(xBias, zBias, resolution, heightmapImage->getPixel(x, y, 0), x, y);
-      Vertex vertex2 = createVertex(xBias, zBias, resolution, heightmapImage->getPixel(x + 1, y, 0), x + 1, y);
-      Vertex vertex3 = createVertex(xBias, zBias, resolution, heightmapImage->getPixel(x + 1, y + 1, 0), x + 1, y + 1);
-
-      // top triangleprintVertex(centerVertices, "center", 100);
-      Vertex vertex4 = createVertex(xBias, zBias, resolution, heightmapImage->getPixel(x, y + 1, 0), x, y + 1);
-      Vertex vertex5 = createVertex(xBias, zBias, resolution, heightmapImage->getPixel(x + 1, y + 1, 0), x + 1, y + 1);
-
-      addTriangleToVBO(triangleVertices, triangleColors, vIndex, cIndex, vertex1, vertex2, vertex3);
-      addTriangleToVBO(triangleVertices, triangleColors, vIndex, cIndex, vertex1, vertex4, vertex5);
-    }
-  }
-
-  /*****************************************************************
-                            SMOOTH TRIANGLES
-  *****************************************************************/
-
-  std::unique_ptr<float[]> centerVertices = std::make_unique<float[]>(numTriangleVertices * 3);
-  std::unique_ptr<float[]> leftVertices = std::make_unique<float[]>(numTriangleVertices * 3);
-  std::unique_ptr<float[]> rightVertices = std::make_unique<float[]>(numTriangleVertices * 3);
-  std::unique_ptr<float[]> upVertices = std::make_unique<float[]>(numTriangleVertices * 3);
-  std::unique_ptr<float[]> downVertices = std::make_unique<float[]>(numTriangleVertices * 3);
-  // we don't need another color VBO because we can re-use the one from the other triangles
-
-  vector<float *> vbos = {centerVertices.get(), leftVertices.get(), rightVertices.get(), upVertices.get(), downVertices.get()};
-
-  vIndex = 0;
-  cIndex = 0;
-
-  for (int y = 0; y < h - 1; ++y)
-  {
-    for (int x = 0; x < w - 1; ++x)
-    {
-      // returns { center, left, right, up, down }
-      vector<Vertex> vertices1 = createVertexAndNeighbors(heightmapImage, xBias, zBias, resolution, x, y, h, w);
-      vector<Vertex> vertices2 = createVertexAndNeighbors(heightmapImage, xBias, zBias, resolution, x + 1, y, h, w);
-      vector<Vertex> vertices3 = createVertexAndNeighbors(heightmapImage, xBias, zBias, resolution, x + 1, y + 1, h, w);
-
-      vector<Vertex> vertices4 = createVertexAndNeighbors(heightmapImage, xBias, zBias, resolution, x, y + 1, h, w);
-      vector<Vertex> vertices5 = createVertexAndNeighbors(heightmapImage, xBias, zBias, resolution, x + 1, y + 1, h, w);
-
-      addTriangleVerticesToVBO(vbos, vIndex, vertices1, vertices2, vertices3);
-      addTriangleVerticesToVBO(vbos, vIndex, vertices1, vertices4, vertices5);
-    }
-  }
-
-  int i = 100;
-  printVertex(centerVertices, "center", i);
-  printVertex(leftVertices, "left", i);
-  printVertex(rightVertices, "right", i);
-  printVertex(upVertices, "up", i);
-  printVertex(downVertices, "down", i);
-
-  // Create the VBOs.
-  // We make a separate VBO for vertices and colors.
-  // This operation must be performed BEFORE we initialize any VAOs.
-  pointsVboVertices.Gen(numPointVertices, 3, pointPositions.get(), GL_STATIC_DRAW); // 3 values per position
-  pointsVboColors.Gen(numPointVertices, 4, pointColors.get(), GL_STATIC_DRAW);      // 4 values per color
-
-  linesVboVertices.Gen(numLineVertices, 3, lineVertices.get(), GL_STATIC_DRAW);
-  linesVboColors.Gen(numLineVertices, 4, lineColors.get(), GL_STATIC_DRAW);
-
-  trianglesVboVertices.Gen(numTriangleVertices, 3, triangleVertices.get(), GL_STATIC_DRAW);
-  trianglesVboColors.Gen(numTriangleVertices, 4, triangleColors.get(), GL_STATIC_DRAW);
-
-  // smooth triangles
-  centerSmoothTriangesVBO.Gen(numTriangleVertices, 3, centerVertices.get(), GL_STATIC_DRAW);
-  leftSmoothTriangesVBO.Gen(numTriangleVertices, 3, leftVertices.get(), GL_STATIC_DRAW);
-  rightSmoothTriangesVBO.Gen(numTriangleVertices, 3, rightVertices.get(), GL_STATIC_DRAW);
-  upSmoothTriangesVBO.Gen(numTriangleVertices, 3, upVertices.get(), GL_STATIC_DRAW);
-  downSmoothTriangesVBO.Gen(numTriangleVertices, 3, downVertices.get(), GL_STATIC_DRAW);
-
-  // Create the VAOs. There is a single VAO in this example.
+  // Create the VAOs.
   // Important: this code must be executed AFTER we created our pipeline program, and AFTER we set up our VBOs.
   // A VAO contains the geometry for a single object. There should be one VAO per object.
   // In this homework, "geometry" means vertex positions and colors. In homework 2, it will also include
   // vertex normal and vertex texture coordinates for texture mapping.
-  pointsVao.Gen();
-  linesVao.Gen();
-  trianglesVao.Gen();
-  smoothTrianglesVAO.Gen();
+  splinesVao.Gen();
 
   // Set up the relationship between the "position" shader variable and the VAO.
   // Important: any typo in the shader variable name will lead to malfunction.
-  pointsVao.ConnectPipelineProgramAndVBOAndShaderVariable(&pipelineProgram, &pointsVboVertices, "position");
-  pointsVao.ConnectPipelineProgramAndVBOAndShaderVariable(&pipelineProgram, &pointsVboColors, "color");
-
-  linesVao.ConnectPipelineProgramAndVBOAndShaderVariable(&pipelineProgram, &linesVboVertices, "position");
-  linesVao.ConnectPipelineProgramAndVBOAndShaderVariable(&pipelineProgram, &linesVboColors, "color");
-
-  trianglesVao.ConnectPipelineProgramAndVBOAndShaderVariable(&pipelineProgram, &trianglesVboVertices, "position");
-  trianglesVao.ConnectPipelineProgramAndVBOAndShaderVariable(&pipelineProgram, &trianglesVboColors, "color");
-
-  // smooth triangles. NOTE: "center" --> "position"
-  smoothTrianglesVAO.ConnectPipelineProgramAndVBOAndShaderVariable(&pipelineProgram, &centerSmoothTriangesVBO, "position");
-  smoothTrianglesVAO.ConnectPipelineProgramAndVBOAndShaderVariable(&pipelineProgram, &leftSmoothTriangesVBO, "left");
-  smoothTrianglesVAO.ConnectPipelineProgramAndVBOAndShaderVariable(&pipelineProgram, &rightSmoothTriangesVBO, "right");
-  smoothTrianglesVAO.ConnectPipelineProgramAndVBOAndShaderVariable(&pipelineProgram, &upSmoothTriangesVBO, "up");
-  smoothTrianglesVAO.ConnectPipelineProgramAndVBOAndShaderVariable(&pipelineProgram, &downSmoothTriangesVBO, "down");
-  smoothTrianglesVAO.ConnectPipelineProgramAndVBOAndShaderVariable(&pipelineProgram, &trianglesVboColors, "color");
+  splinesVao.ConnectPipelineProgramAndVBOAndShaderVariable(&pipelineProgram, &splinesVboVertices, "position");
+  splinesVao.ConnectPipelineProgramAndVBOAndShaderVariable(&pipelineProgram, &splinesVboColors, "color");
 
   // Check for any OpenGL errors.
   std::cout << "GL error status is: " << glGetError() << std::endl;
-
-  // for animation
 }
 
 int main(int argc, char *argv[])
