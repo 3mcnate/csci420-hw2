@@ -1,7 +1,7 @@
 LIB_CODE_BASE=openGLHelper
 
 HW2_CXX_SRC=hw2.cpp
-HW2_HEADER=
+HW2_HEADER=hw2-helper.h
 HW2_OBJ=$(notdir $(patsubst %.cpp,%.o,$(HW2_CXX_SRC)))
 
 LIB_CODE_CXX_SRC=$(wildcard $(LIB_CODE_BASE)/*.cpp)
@@ -17,7 +17,7 @@ CXX_OBJ=$(HW2_OBJ) $(LIB_CODE_OBJ) $(IMAGE_LIB_OBJ)
 
 CXX=g++
 TARGET=hw2
-CXXFLAGS=-DGLM_FORCE_RADIANS -std=c++14
+CXXFLAGS=-DGLM_FORCE_RADIANS -std=c++14 
 OPT=-O3
 
 UNAME_S=$(shell uname -s)

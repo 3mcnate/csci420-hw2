@@ -83,6 +83,9 @@ VBO splinesVboVertices;
 VBO splinesVboColors;
 VAO splinesVao;
 
+float upos = 0;
+int currPoint = 0;
+
 // Write a screenshot to the specified filename.
 void saveScreenshot(const char *filename)
 {
@@ -275,13 +278,41 @@ void displayFunc()
   // First, clear the screen.
   glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
+  // cout << "upos " << upos << endl;
+  if (upos >= 1)
+  {
+    upos = 0;
+    currPoint = (currPoint + 1) % spline.numControlPoints;
+  }
+
+  // increment upos so we move forward
+  // upos += 0.02;
+
+  float *R = calcMC(currPoint);
+
+  vector<float> posMatrix = {upos * upos * upos, upos * upos, upos, 1};
+  float position[3];
+  MultiplyMatrices(1, 4, 3, posMatrix.data(), R, position);
+
+  vector<float> tangentMatrix = {3 * upos * upos, 2 * upos, 1, 0};
+  float tangent[3];
+  MultiplyMatrices(1, 4, 3, tangentMatrix.data(), R, tangent);
+  normalizeVector(tangent);
+
+  // cout << "Tangent: " << tangent[0] << " " << tangent[1] << " " << tangent[2] << endl;
+
+  // important :)
+  delete[] R;
+
   // Set up the camera position, focus point, and the up vector.
   matrix.SetMatrixMode(OpenGLMatrix::ModelView);
   matrix.LoadIdentity();
-  matrix.LookAt(0.0, 3.5, 4.0,
-                0.0, 0.0, 0.0,
+  matrix.LookAt(0, 3, 5,
+                0, 0, -1,
                 0.0, 1.0, 0.0);
 
+#define CREATIVE_MODE
+#ifdef CREATIVE_MODE
   // In here, you can do additional modeling on the object, such as performing translations, rotations and scales.
   // x, y, z has to be a unit vector
 
@@ -301,6 +332,8 @@ void displayFunc()
 
   // Read the current modelview and projection matrices from our helper class.
   // The matrices are only read here; nothing is actually communicated to OpenGL yet.
+#endif
+
   float modelViewMatrix[16];
   matrix.SetMatrixMode(OpenGLMatrix::ModelView);
   matrix.GetMatrix(modelViewMatrix);
@@ -364,41 +397,11 @@ void initScene(int argc, char *argv[])
   vector<float> splineColors;
 
   // for each set of 4 control points, create a curve
-  for (int i = 0; i + 4 < spline.numControlPoints; ++i)
+  for (int i = 0; i < spline.numControlPoints - 3; ++i)
   {
-    // s = 1/2
-    float s = 0.5f;
-
-    /*
-      M = [  -s  2-s  s-2    s  ]
-          [  2s  s-3  3-2s  -s  ]
-          [  -s   0    s     0  ]
-          [  0    1    0     0  ]
-    */
-    vector<float> M = {-s, 2 * s, -s, 0,
-                       2 - s, s - 3, 0, 1,
-                       s - 2, 3 - (2 * s), s, 0,
-                       s, -s, 0, 0};
-
-    /*
-      C = [ x1  y1  z1 ]
-          [ x2  y2  z2 ]
-          [ x3  y3  z3 ]
-          [ x4  y4  z4 ]
-    */
-    vector<float> C;
-    for (int j = 0; j < 4; ++j)
-      C.push_back(spline.points[i + j].x);
-
-    for (int j = 0; j < 4; ++j)
-      C.push_back(spline.points[i + j].y);
-
-    for (int j = 0; j < 4; ++j)
-      C.push_back(spline.points[i + j].z);
-
-    // cache result R = M * C for efficiency
-    float R[12];
-    MultiplyMatrices(4, 4, 3, M.data(), C.data(), R);
+    cout << "numControlPoints: " << spline.numControlPoints << endl;
+    cout << "calculating spline matrix starting at point " << i << endl;
+    float *R = calcMC(i, true);
 
     // draw the spline
     for (float u = 0.0f; u < 0.9999f; u += 0.001f)
@@ -409,11 +412,10 @@ void initScene(int argc, char *argv[])
 
       // add vertices to VBO
       // Note: we must add each vertex except the first and last twice to connect the lines.
-      bool addOnlyOnce = (i == 0 && u == 0.0f) || ((i + 5) == (spline.numControlPoints) && (u >= 0.9985f));
+      bool addOnlyOnce = (i == 0 && u == 0.0f) || (i == (spline.numControlPoints - 3) && (u >= 0.9985f));
 
       for (int j = 0; j < (addOnlyOnce ? 1 : 2); ++j)
       {
-
         splineVertices.push_back(point[0]);
         splineVertices.push_back(point[1]);
         splineVertices.push_back(point[2]);
@@ -423,6 +425,8 @@ void initScene(int argc, char *argv[])
       for (int j = 0; j < (addOnlyOnce ? 4 : 8); ++j)
         splineColors.push_back(1.0f);
     }
+
+    delete[] R;
   }
 
   numSplineVertices = (int)splineVertices.size() / 3;
@@ -450,7 +454,7 @@ int main(int argc, char *argv[])
   if (argc < 2)
   {
     printf("Usage: %s <spline file>\n", argv[0]);
-    exit(0);
+    return 0;
   }
 
   // Load spline from the provided filename.

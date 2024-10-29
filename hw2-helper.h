@@ -3,20 +3,40 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sstream>
 #include "openGLHeader.h"
 #include "imageIO.h"
 
 // Represents one spline control point.
-struct Point 
+struct Point
 {
   float x, y, z;
+
+  Point(float *point)
+  {
+    x = point[0];
+    y = point[1];
+    z = point[2];
+  }
+
+  string toString()
+  {
+    stringstream ss;
+    ss << "(" << x << ", " << y << ", " << z << ")";
+    return ss.str();
+  }
+
+  void print()
+  {
+    cout << toString() << endl;
+  }
 };
 
 // Contains the control points of the spline.
-struct Spline 
+struct Spline
 {
   int numControlPoints;
-  Point * points;
+  Point *points;
 } spline;
 
 void loadSpline(char *argv)
@@ -148,4 +168,67 @@ int initTexture(const char *imageFilename, GLuint textureHandle)
   delete[] pixelsRGBA;
 
   return 0;
+}
+
+/**
+ *  Calculates and returns M * C, the Catumull-Rom spline basis times control point matrix
+ *  @param i index of the first of 4 control points in the spline
+ */
+float *calcMC(int i, bool debug = false)
+{
+  // s = 1/2
+  float s = 0.5f;
+
+  /*
+    M = [  -s  2-s  s-2    s  ]
+        [  2s  s-3  3-2s  -s  ]
+        [  -s   0    s     0  ]
+        [  0    1    0     0  ]
+  */
+  vector<float> M = {-s, 2 * s, -s, 0,
+                     2 - s, s - 3, 0, 1,
+                     s - 2, 3 - (2 * s), s, 0,
+                     s, -s, 0, 0};
+
+  /*
+    C = [ x1  y1  z1 ]
+        [ x2  y2  z2 ]
+        [ x3  y3  z3 ]
+        [ x4  y4  z4 ]
+  */
+  int n = spline.numControlPoints;
+  vector<float> C;
+  for (int j = 0; j < 4; ++j)
+  {
+    int index = (i + j) % n;
+    C.push_back(spline.points[index].x);
+    if (debug)
+    {
+      printf("index: %2d %s\n", index, spline.points[index].toString().c_str());
+    }
+  }
+
+  for (int j = 0; j < 4; ++j)
+  {
+    int index = (i + j) % n;
+    C.push_back(spline.points[index].y);
+  }
+
+  for (int j = 0; j < 4; ++j)
+  {
+    int index = (i + j) % n;
+    C.push_back(spline.points[index].z);
+  }
+
+  float *R = new float[12];
+  MultiplyMatrices(4, 4, 3, M.data(), C.data(), R);
+  return R;
+}
+
+void normalizeVector(float *v)
+{
+  float magnitude = sqrt((v[0] * v[0]) + (v[1] * v[1]) + (v[2] * v[2]));
+  v[0] /= magnitude;
+  v[1] /= magnitude;
+  v[2] /= magnitude;
 }
