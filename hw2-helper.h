@@ -1,4 +1,5 @@
-
+#ifndef HW2_H
+#define HW2_H
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -6,31 +7,7 @@
 #include <sstream>
 #include "openGLHeader.h"
 #include "imageIO.h"
-
-// Represents one spline control point.
-struct Point
-{
-  float x, y, z;
-
-  Point(float *point)
-  {
-    x = point[0];
-    y = point[1];
-    z = point[2];
-  }
-
-  string toString()
-  {
-    stringstream ss;
-    ss << "(" << x << ", " << y << ", " << z << ")";
-    return ss.str();
-  }
-
-  void print()
-  {
-    cout << toString() << endl;
-  }
-};
+#include "point.h"
 
 // Contains the control points of the spline.
 struct Spline
@@ -225,6 +202,22 @@ float *calcMC(int i, bool debug = false)
   return R;
 }
 
+Point calculatePosition(float u, float *R)
+{
+  vector<float> posMatrix = {u * u * u, u * u, u, 1};
+  float p[3];
+  MultiplyMatrices(1, 4, 3, posMatrix.data(), R, p);
+  return Point(p);
+}
+
+Point calculateTangent(float u, float *R)
+{
+  vector<float> tangentMatrix = {3 * u * u, 2 * u, 1, 0};
+  float t[3];
+  MultiplyMatrices(1, 4, 3, tangentMatrix.data(), R, t);
+  return Point(t).normalize();
+}
+
 void normalizeVector(float *v)
 {
   float magnitude = sqrt((v[0] * v[0]) + (v[1] * v[1]) + (v[2] * v[2]));
@@ -232,3 +225,28 @@ void normalizeVector(float *v)
   v[1] /= magnitude;
   v[2] /= magnitude;
 }
+
+void addPointToVector(const Point &p, vector<float> &vec)
+{
+  vec.push_back(p.x);
+  vec.push_back(p.y);
+  vec.push_back(p.z);
+}
+
+void addColorToVector(const Point &p, vector<float> &vec)
+{
+  vec.push_back(p.x);
+  vec.push_back(p.y);
+  vec.push_back(p.z);
+  vec.push_back(1);
+}
+
+void addColorToVector(float r, float g, float b, vector<float> &vec)
+{
+  vec.push_back(r);
+  vec.push_back(g);
+  vec.push_back(b);
+  vec.push_back(1);
+}
+
+#endif

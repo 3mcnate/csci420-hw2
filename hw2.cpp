@@ -293,21 +293,14 @@ void displayFunc()
   // increment upos so we move forward
   upos += 0.01;
 
+  // calculate Catmull-Rom matrices
   float *R = calcMC(currPoint);
 
   // calculate position
-  vector<float> posMatrix = {upos * upos * upos, upos * upos, upos, 1};
-  float position[3];
-  MultiplyMatrices(1, 4, 3, posMatrix.data(), R, position);
+  Point pos = calculatePosition(upos, R);
 
   // calculate tangent
-  vector<float> tangentMatrix = {3 * upos * upos, 2 * upos, 1, 0};
-  float tangent[3];
-  MultiplyMatrices(1, 4, 3, tangentMatrix.data(), R, tangent);
-  normalizeVector(tangent);
-
-  // cout << "\nPosition: " << position[0] << " " << position[1] << " " << position[2] << endl;
-  // cout << "Tangent: " << tangent[0] << " " << tangent[1] << " " << tangent[2] << endl;
+  Point tangent = calculateTangent(upos, R);
 
   // important :)
   delete[] R;
@@ -316,8 +309,8 @@ void displayFunc()
   matrix.SetMatrixMode(OpenGLMatrix::ModelView);
   matrix.LoadIdentity();
   // bux fix: needed to add tangent to position to get correct direction
-  matrix.LookAt(position[0], position[1], position[2],
-                position[0] + tangent[0], position[1] + tangent[1], position[2] + tangent[2],
+  matrix.LookAt(pos.x, pos.y, pos.z,
+                pos.x + tangent.x, pos.y + tangent.y, pos.z + tangent.z,
                 0.0, 1.0, 0.0);
 
   // matrix.LookAt(0, 3, 5,
@@ -395,13 +388,6 @@ void initScene(int argc, char *argv[])
   vector<float> splineVertices;
   vector<float> splineColors;
 
-  vector<float> splineNormals;
-  vector<float> splineBinormals;
-
-  float arbitraryV[3] = {1,
-                         0,
-                         0};
-
   // for each set of 4 control points, create a curve
   for (int i = 0; i < spline.numControlPoints - 3; ++i)
   {
@@ -413,29 +399,92 @@ void initScene(int argc, char *argv[])
     for (float u = 0.0f; u < 0.9999f; u += 0.001f)
     {
       // calculate position
-      vector<float> posMatrix = {u * u * u, u * u, u, 1};
-      float point[3];
-      MultiplyMatrices(1, 4, 3, posMatrix.data(), R, point);
-
-      // calculate tangent
-      vector<float> tangentMatrix = {3 * u * u, 2 * u, 1, 0};
-      float tangent[3];
-      MultiplyMatrices(1, 4, 3, posMatrix.data(), R, tangent);
+      Point point = calculatePosition(u, R);
 
       // add vertices to VBO
       // Note: we must add each vertex except the first and last twice to connect the lines.
       bool addOnlyOnce = (i == 0 && u == 0.0f) || (i == (spline.numControlPoints - 3) && (u >= 0.9985f));
 
-      for (int j = 0; j < (addOnlyOnce ? 1 : 2); ++j)
-      {
-        splineVertices.push_back(point[0]);
-        splineVertices.push_back(point[1]);
-        splineVertices.push_back(point[2]);
-      }
+      addPointToVector(point, splineVertices);
+      if (!addOnlyOnce)
+        addPointToVector(point, splineVertices);
 
       // add colors to VBO
       for (int j = 0; j < (addOnlyOnce ? 4 : 8); ++j)
         splineColors.push_back(1.0f);
+    }
+
+    delete[] R;
+  }
+
+  /*****************************************************************
+                                LEVEL 3
+  *****************************************************************/
+
+  // // calculate tangent
+  // vector<float> tangentMatrix = {3 * u * u, 2 * u, 1, 0};
+  // float t[3];
+  // MultiplyMatrices(1, 4, 3, posMatrix.data(), R, t);
+  // Point tangent(t);
+  vector<float> railVertices;
+  vector<float> railColors;
+
+  float arbitraryV[3] = {1,
+                         0,
+                         0};
+
+  Point prevB0(0, 0, 0);
+
+  // for each set of 4 control points, create a curve
+  for (int i = 0; i < spline.numControlPoints - 3; ++i)
+  {
+    float *R = calcMC(i, true);
+
+    // calculate vertices
+    for (float u = 0.0f; u < 0.9999f; u += 0.001f)
+    {
+      bool isFirstPoint = i == 0 && u == 0.0f;
+
+      // calculate position
+      Point P0 = calculatePosition(u, R);
+
+      // calculate tangent
+      Point T0 = calculateTangent(u, R);
+
+      // initialization for the first point
+      Point N0(0, 0, 0);
+      if (isFirstPoint)
+        N0 = crossProduct(T0, arbitraryV).normalize();
+      else
+        N0 = crossProduct(prevB0, T0).normalize();
+
+      // calculate binormal
+      Point B0 = crossProduct(T0, N0).normalize();
+
+      // Now calculate the necessary vertices
+      float alpha = 2;
+      Point V0 = P0 + alpha * (-N0 + B0);
+      Point V1 = P0 + alpha * (N0 + B0);
+      Point V2 = P0 + alpha * (N0 + -B0);
+      Point V3 = P0 + alpha * (-N0 + -B0);
+
+      // create the triangles by adding to VBO
+      if (isFirstPoint)
+      {
+        addPointToVector(V0, railVertices);
+        addPointToVector(V1, railVertices);
+        addPointToVector(V2, railVertices);
+
+        addPointToVector(V0, railVertices);
+        addPointToVector(V3, railVertices);
+        addPointToVector(V2, railVertices);
+
+        for (int i = 0; i < 6; i++)
+          addColorToVector(-T0, railColors);
+      }
+
+      // save B0 for the next calculation
+      prevB0 = B0;
     }
 
     delete[] R;
