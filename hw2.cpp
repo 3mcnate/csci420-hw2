@@ -83,6 +83,11 @@ VBO splinesVboVertices;
 VBO splinesVboColors;
 VAO splinesVao;
 
+// axis for debugging
+VBO axisVboVertices;
+VBO axisVboColors;
+VAO axisVao;
+
 float upos = 0;
 int currPoint = 0;
 
@@ -286,19 +291,22 @@ void displayFunc()
   }
 
   // increment upos so we move forward
-  // upos += 0.02;
+  upos += 0.01;
 
   float *R = calcMC(currPoint);
 
+  // calculate position
   vector<float> posMatrix = {upos * upos * upos, upos * upos, upos, 1};
   float position[3];
   MultiplyMatrices(1, 4, 3, posMatrix.data(), R, position);
 
+  // calculate tangent
   vector<float> tangentMatrix = {3 * upos * upos, 2 * upos, 1, 0};
   float tangent[3];
   MultiplyMatrices(1, 4, 3, tangentMatrix.data(), R, tangent);
   normalizeVector(tangent);
 
+  // cout << "\nPosition: " << position[0] << " " << position[1] << " " << position[2] << endl;
   // cout << "Tangent: " << tangent[0] << " " << tangent[1] << " " << tangent[2] << endl;
 
   // important :)
@@ -307,9 +315,14 @@ void displayFunc()
   // Set up the camera position, focus point, and the up vector.
   matrix.SetMatrixMode(OpenGLMatrix::ModelView);
   matrix.LoadIdentity();
-  matrix.LookAt(0, 3, 5,
-                0, 0, -1,
+  // bux fix: needed to add tangent to position to get correct direction
+  matrix.LookAt(position[0], position[1], position[2],
+                position[0] + tangent[0], position[1] + tangent[1], position[2] + tangent[2],
                 0.0, 1.0, 0.0);
+
+  // matrix.LookAt(0, 3, 5,
+  //               0, 0, -1,
+  //               0, 1, 0);
 
 #define CREATIVE_MODE
 #ifdef CREATIVE_MODE
@@ -342,11 +355,6 @@ void displayFunc()
   matrix.SetMatrixMode(OpenGLMatrix::Projection);
   matrix.GetMatrix(projectionMatrix);
 
-  // Upload the modelview and projection matrices to the GPU. Note that these are "uniform" variables.
-  // Important: these matrices must be uploaded to *all* pipeline programs used.
-  // In hw1, there is only one pipeline program, but in hw2 there will be several of them.
-  // In such a case, you must separately upload to *each* pipeline program.
-  // Important: do not make a typo in the variable name below; otherwise, the program will malfunction.
   pipelineProgram.SetUniformVariableMatrix4fv("modelViewMatrix", GL_FALSE, modelViewMatrix);
   pipelineProgram.SetUniformVariableMatrix4fv("projectionMatrix", GL_FALSE, projectionMatrix);
 
@@ -354,6 +362,9 @@ void displayFunc()
   // Bind the VAO that we want to render. Remember, one object = one VAO.
   splinesVao.Bind();
   glDrawArrays(GL_LINES, 0, numSplineVertices);
+
+  axisVao.Bind();
+  glDrawArrays(GL_LINES, 0, 6);
 
   // Swap the double-buffers.
   glutSwapBuffers();
@@ -367,12 +378,6 @@ void initScene(int argc, char *argv[])
   // Enable z-buffering (i.e., hidden surface removal using the z-buffer algorithm).
   glEnable(GL_DEPTH_TEST);
 
-  // Create a pipeline program. This operation must be performed BEFORE we initialize any VAOs.
-  // A pipeline program contains our shaders. Different pipeline programs may contain different shaders.
-  // In this homework, we only have one set of shaders, and therefore, there is only one pipeline program.
-  // In hw2, we will need to shade different objects with different shaders, and therefore, we will have
-  // several pipeline programs (e.g., one for the rails, one for the ground/sky, etc.).
-  // Load and set up the pipeline program, including its shaders.
   if (pipelineProgram.BuildShadersFromFiles(shaderBasePath, "vertexShader.glsl", "fragmentShader.glsl") != 0)
   {
     cout << "Failed to build the pipeline program." << endl;
@@ -380,12 +385,6 @@ void initScene(int argc, char *argv[])
   }
   cout << "Successfully built the pipeline program." << endl;
 
-  // Bind the pipeline program that we just created.
-  // The purpose of binding a pipeline program is to activate the shaders that it contains, i.e.,
-  // any object rendered from that point on, will use those shaders.
-  // When the application starts, no pipeline program is bound, which means that rendering is not set up.
-  // So, at some point (such as below), we need to bind a pipeline program.
-  // From that point on, exactly one pipeline program is bound at any moment of time.
   pipelineProgram.Bind();
 
   /*****************************************************************
@@ -395,6 +394,13 @@ void initScene(int argc, char *argv[])
   // creating line buffers
   vector<float> splineVertices;
   vector<float> splineColors;
+
+  vector<float> splineNormals;
+  vector<float> splineBinormals;
+
+  float arbitraryV[3] = {1,
+                         0,
+                         0};
 
   // for each set of 4 control points, create a curve
   for (int i = 0; i < spline.numControlPoints - 3; ++i)
@@ -406,9 +412,15 @@ void initScene(int argc, char *argv[])
     // draw the spline
     for (float u = 0.0f; u < 0.9999f; u += 0.001f)
     {
-      vector<float> uMatrix = {u * u * u, u * u, u, 1};
+      // calculate position
+      vector<float> posMatrix = {u * u * u, u * u, u, 1};
       float point[3];
-      MultiplyMatrices(1, 4, 3, uMatrix.data(), R, point);
+      MultiplyMatrices(1, 4, 3, posMatrix.data(), R, point);
+
+      // calculate tangent
+      vector<float> tangentMatrix = {3 * u * u, 2 * u, 1, 0};
+      float tangent[3];
+      MultiplyMatrices(1, 4, 3, posMatrix.data(), R, tangent);
 
       // add vertices to VBO
       // Note: we must add each vertex except the first and last twice to connect the lines.
@@ -433,17 +445,32 @@ void initScene(int argc, char *argv[])
   splinesVboVertices.Gen(numSplineVertices, 3, splineVertices.data(), GL_STATIC_DRAW); // 3 values per position
   splinesVboColors.Gen(numSplineVertices, 4, splineColors.data(), GL_STATIC_DRAW);     // 4 values per color
 
-  // Create the VAOs.
-  // Important: this code must be executed AFTER we created our pipeline program, and AFTER we set up our VBOs.
-  // A VAO contains the geometry for a single object. There should be one VAO per object.
-  // In this homework, "geometry" means vertex positions and colors. In homework 2, it will also include
-  // vertex normal and vertex texture coordinates for texture mapping.
   splinesVao.Gen();
-
-  // Set up the relationship between the "position" shader variable and the VAO.
-  // Important: any typo in the shader variable name will lead to malfunction.
   splinesVao.ConnectPipelineProgramAndVBOAndShaderVariable(&pipelineProgram, &splinesVboVertices, "position");
   splinesVao.ConnectPipelineProgramAndVBOAndShaderVariable(&pipelineProgram, &splinesVboColors, "color");
+
+  // debugging
+  float axis_length = 4;
+  vector<float> axisVertices = {-axis_length, 0, 0,
+                                axis_length, 0, 0,
+                                0, axis_length, 0,
+                                0, -axis_length, 0,
+                                0, 0, axis_length,
+                                0, 0, -axis_length};
+
+  vector<float> axisColors = {1, 0, 0, 1,
+                              1, 0, 0, 1,
+                              0, 1, 0, 1,
+                              0, 1, 0, 1,
+                              0, 0, 1, 1,
+                              0, 0, 1, 1};
+
+  axisVboVertices.Gen(6, 3, axisVertices.data(), GL_STATIC_DRAW);
+  axisVboColors.Gen(6, 3, axisColors.data(), GL_STATIC_DRAW);
+
+  axisVao.Gen();
+  axisVao.ConnectPipelineProgramAndVBOAndShaderVariable(&pipelineProgram, &axisVboVertices, "position");
+  axisVao.ConnectPipelineProgramAndVBOAndShaderVariable(&pipelineProgram, &axisVboColors, "color");
 
   // Check for any OpenGL errors.
   std::cout << "GL error status is: " << glGetError() << std::endl;
