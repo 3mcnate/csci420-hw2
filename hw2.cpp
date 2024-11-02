@@ -433,6 +433,7 @@ void initScene(int argc, char *argv[])
                          0,
                          0};
 
+  vector<Point> prev4;
   Point prevB0(0, 0, 0);
 
   // for each set of 4 control points, create a curve
@@ -441,7 +442,7 @@ void initScene(int argc, char *argv[])
     float *R = calcMC(i, true);
 
     // calculate vertices
-    for (float u = 0.0f; u < 0.9999f; u += 0.001f)
+    for (float u = 0.0f; u < 0.9999f; u += 0.01f)
     {
       bool isFirstPoint = i == 0 && u == 0.0f;
 
@@ -468,20 +469,41 @@ void initScene(int argc, char *argv[])
       Point V2 = P0 + alpha * (N0 + -B0);
       Point V3 = P0 + alpha * (-N0 + -B0);
 
-      // create the triangles by adding to VBO
+      // first triangles form the end of the rail
       if (isFirstPoint)
       {
-        addPointToVector(V0, railVertices);
-        addPointToVector(V1, railVertices);
-        addPointToVector(V2, railVertices);
-
-        addPointToVector(V0, railVertices);
-        addPointToVector(V3, railVertices);
-        addPointToVector(V2, railVertices);
+        addTriangleToVector(V0, V1, V2, railVertices);
+        addTriangleToVector(V0, V3, V2, railVertices);
 
         for (int i = 0; i < 6; i++)
-          addColorToVector(-T0, railColors);
+          addColorToVector(T0, railColors);
       }
+      else
+      {
+        Point& V4 = prev4[0];
+        Point& V5 = prev4[1];
+        Point& V6 = prev4[2];
+        Point& V7 = prev4[3];
+
+        addTriangleToVector(V0, V1, V4, railVertices);
+        addTriangleToVector(V0, V1, V5, railVertices);
+
+        addTriangleToVector(V1, V2, V5, railVertices);
+        addTriangleToVector(V1, V2, V6, railVertices);
+
+        addTriangleToVector(V2, V3, V6, railVertices);
+        addTriangleToVector(V2, V3, V7, railVertices);
+
+        addTriangleToVector(V3, V0, V7, railVertices);
+        addTriangleToVector(V3, V0, V4, railVertices);
+      }
+
+      // Save the vertices for the next calculation
+      prev4.clear();
+      prev4.push_back(V0);
+      prev4.push_back(V1);
+      prev4.push_back(V2);
+      prev4.push_back(V3);
 
       // save B0 for the next calculation
       prevB0 = B0;

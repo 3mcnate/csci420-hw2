@@ -249,4 +249,11 @@ void addColorToVector(float r, float g, float b, vector<float> &vec)
   vec.push_back(1);
 }
 
+void addTriangleToVector(const Point &p1, const Point &p2, const Point &p3, vector<float> &vec)
+{
+  addPointToVector(p1, vec);
+  addPointToVector(p2, vec);
+  addPointToVector(p3, vec);
+}
+
 #endif
