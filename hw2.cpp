@@ -37,7 +37,7 @@
 #if defined(WIN32) || defined(_WIN32)
 char shaderBasePath[1024] = SHADER_BASE_PATH;
 #else
-char shaderBasePath[1024] = ".";
+char shaderBasePath[1024] = "shaders";
 #endif
 
 using namespace std;
@@ -73,7 +73,7 @@ char windowTitle[512] = "CSCI 420 Homework 2";
 
 // CSCI 420 helper classes.
 OpenGLMatrix matrix;
-PipelineProgram pipelineProgram;
+PipelineProgram milestonePipelineProgram;
 
 // Number of vertices in the spline
 int numSplineVertices;
@@ -97,7 +97,7 @@ VAO axisVao;
 // for animating the motion
 vector<Point> positions;
 vector<Point> tangents;
-vector<Point> normals;
+vector<Point> binormals;
 
 int currPos = 0;
 
@@ -135,7 +135,7 @@ void reshapeFunc(int w, int h)
   // Anything closer than zNear, or further than zFar, will be culled.
   const float zNear = 0.1f;
   const float zFar = 10000.0f;
-  const float humanFieldOfView = 60.0f;
+  const float humanFieldOfView = 85.0f;
   matrix.Perspective(humanFieldOfView, 1.0f * w / h, zNear, zFar);
 }
 
@@ -293,20 +293,19 @@ void displayFunc()
   // First, clear the screen.
   glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-  // cout << "upos " << upos << endl;
   Point& pos = positions[currPos];
   Point& tangent = tangents[currPos];
-  Point& normal = normals[currPos];
+  Point& binormal = binormals[currPos];
 
-  pos = pos + normal;
+  Point eye = pos + 1.3 * binormal;
+  Point focus = eye + tangent;
 
   // Set up the camera position, focus point, and the up vector.
   matrix.SetMatrixMode(OpenGLMatrix::ModelView);
   matrix.LoadIdentity();
-  // bux fix: needed to add tangent to position to get correct direction
-  matrix.LookAt(pos.x, pos.y, pos.z,
-                pos.x + tangent.x, pos.y + tangent.y, pos.z + tangent.z,
-                normal.x, normal.y, normal.z);
+  matrix.LookAt(eye.x, eye.y, eye.z,
+                focus.x, focus.y, focus.z,
+                binormal.x, binormal.y, binormal.z);
 
   // move forward
   currPos = (currPos + 1) % positions.size();
@@ -346,8 +345,8 @@ void displayFunc()
   matrix.SetMatrixMode(OpenGLMatrix::Projection);
   matrix.GetMatrix(projectionMatrix);
 
-  pipelineProgram.SetUniformVariableMatrix4fv("modelViewMatrix", GL_FALSE, modelViewMatrix);
-  pipelineProgram.SetUniformVariableMatrix4fv("projectionMatrix", GL_FALSE, projectionMatrix);
+  milestonePipelineProgram.SetUniformVariableMatrix4fv("modelViewMatrix", GL_FALSE, modelViewMatrix);
+  milestonePipelineProgram.SetUniformVariableMatrix4fv("projectionMatrix", GL_FALSE, projectionMatrix);
 
   // Execute the rendering.
   // Bind the VAO that we want to render. Remember, one object = one VAO.
@@ -367,19 +366,20 @@ void displayFunc()
 void initScene(int argc, char *argv[])
 {
   // Set the background color.
-  glClearColor(0.0f, 0.0f, 0.0f, 1.0f); // Black color.
+  // sky blue RGB: (3, 165, 252)
+  glClearColor(3.0 / 255.0, 165.0 / 255.0, 252.0 / 255.0, 1.0f);
 
   // Enable z-buffering (i.e., hidden surface removal using the z-buffer algorithm).
   glEnable(GL_DEPTH_TEST);
 
-  if (pipelineProgram.BuildShadersFromFiles(shaderBasePath, "vertexShader.glsl", "fragmentShader.glsl") != 0)
+  if (milestonePipelineProgram.BuildShadersFromFiles(shaderBasePath, "milestoneVertexShader.glsl", "milestoneFragmentShader.glsl") != 0)
   {
     cout << "Failed to build the pipeline program." << endl;
     throw 1;
   }
   cout << "Successfully built the pipeline program." << endl;
 
-  pipelineProgram.Bind();
+  milestonePipelineProgram.Bind();
 
   /*****************************************************************
                               MILESTONE
@@ -424,8 +424,8 @@ void initScene(int argc, char *argv[])
   splinesVboColors.Gen(numSplineVertices, 4, splineColors.data(), GL_STATIC_DRAW);     // 4 values per color
 
   splinesVao.Gen();
-  splinesVao.ConnectPipelineProgramAndVBOAndShaderVariable(&pipelineProgram, &splinesVboVertices, "position");
-  splinesVao.ConnectPipelineProgramAndVBOAndShaderVariable(&pipelineProgram, &splinesVboColors, "color");
+  splinesVao.ConnectPipelineProgramAndVBOAndShaderVariable(&milestonePipelineProgram, &splinesVboVertices, "position");
+  splinesVao.ConnectPipelineProgramAndVBOAndShaderVariable(&milestonePipelineProgram, &splinesVboColors, "color");
 
   /*****************************************************************
                                 LEVEL 3
@@ -469,7 +469,7 @@ void initScene(int argc, char *argv[])
       Point B0 = crossProduct(T0, N0).normalize();
 
       // Now calculate the necessary vertices
-      float alpha = 0.2;
+      float alpha = 0.15;
       Point V0 = P0 + alpha * (-N0 + B0);
       Point V1 = P0 + alpha * (N0 + B0);
       Point V2 = P0 + alpha * (N0 + -B0);
@@ -494,29 +494,21 @@ void initScene(int argc, char *argv[])
 
         addTriangleToVector(V0, V1, V4, railVertices);
         addTriangleToVector(V1, V4, V5, railVertices);
-        addTriangleColorsToVector(V0, V1, V4, railColors);
-        addTriangleColorsToVector(V1, V4, V5, railColors);
         addTriangleNormalToVector(B0, railNormals);
         addTriangleNormalToVector(B0, railNormals);
 
         addTriangleToVector(V1, V2, V5, railVertices);
         addTriangleToVector(V2, V5, V6, railVertices);
-        addTriangleColorsToVector(V1, V2, V5, railColors);
-        addTriangleColorsToVector(V2, V5, V6, railColors);
         addTriangleNormalToVector(N0, railNormals);
         addTriangleNormalToVector(N0, railNormals);
 
         addTriangleToVector(V2, V3, V6, railVertices);
         addTriangleToVector(V3, V6, V7, railVertices);
-        addTriangleColorsToVector(V2, V3, V6, railColors);
-        addTriangleColorsToVector(V3, V6, V7, railColors);
         addTriangleNormalToVector(-B0, railNormals);
         addTriangleNormalToVector(-B0, railNormals);
 
         addTriangleToVector(V3, V0, V7, railVertices);
         addTriangleToVector(V0, V7, V4, railVertices);
-        addTriangleColorsToVector(V3, V0, V7, railColors);
-        addTriangleColorsToVector(V0, V7, V4, railColors);
         addTriangleNormalToVector(-N0, railNormals);
         addTriangleNormalToVector(-N0, railNormals);
       }
@@ -524,7 +516,7 @@ void initScene(int argc, char *argv[])
       // save position, tangent, and normal for rollercoaster motions
       positions.push_back(P0);
       tangents.push_back(T0);
-      normals.push_back(N0);
+      binormals.push_back(B0);
 
       // Save the vertices for the next calculation
       prev4.clear();
@@ -544,10 +536,11 @@ void initScene(int argc, char *argv[])
   numRailVertices = (int)railVertices.size() / 3;
   railVerticesVBO.Gen(numRailVertices, 3, railVertices.data(), GL_STATIC_DRAW);
   railColorsVBO.Gen(numRailVertices, 4, railNormals.data(), GL_STATIC_DRAW);
+  // NOTE: Normals are being used for colors  ^^^
 
   railVAO.Gen();
-  railVAO.ConnectPipelineProgramAndVBOAndShaderVariable(&pipelineProgram, &railVerticesVBO, "position");
-  railVAO.ConnectPipelineProgramAndVBOAndShaderVariable(&pipelineProgram, &railColorsVBO, "color");
+  railVAO.ConnectPipelineProgramAndVBOAndShaderVariable(&milestonePipelineProgram, &railVerticesVBO, "position");
+  railVAO.ConnectPipelineProgramAndVBOAndShaderVariable(&milestonePipelineProgram, &railColorsVBO, "color");
 
   // debugging
   float axis_length = 4;
@@ -569,8 +562,8 @@ void initScene(int argc, char *argv[])
   axisVboColors.Gen(6, 3, axisColors.data(), GL_STATIC_DRAW);
 
   axisVao.Gen();
-  axisVao.ConnectPipelineProgramAndVBOAndShaderVariable(&pipelineProgram, &axisVboVertices, "position");
-  axisVao.ConnectPipelineProgramAndVBOAndShaderVariable(&pipelineProgram, &axisVboColors, "color");
+  axisVao.ConnectPipelineProgramAndVBOAndShaderVariable(&milestonePipelineProgram, &axisVboVertices, "position");
+  axisVao.ConnectPipelineProgramAndVBOAndShaderVariable(&milestonePipelineProgram, &axisVboColors, "color");
 
   // Check for any OpenGL errors.
   std::cout << "GL error status is: " << glGetError() << std::endl;
