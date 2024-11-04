@@ -71,25 +71,35 @@ int windowWidth = 1280;
 int windowHeight = 720;
 char windowTitle[512] = "CSCI 420 Homework 2";
 
-// Number of vertices in the spline
-int numSplineVertices;
-
 // CSCI 420 helper classes.
 OpenGLMatrix matrix;
 PipelineProgram pipelineProgram;
+
+// Number of vertices in the spline
+int numSplineVertices;
+int numRailVertices;
 
 // spline
 VBO splinesVboVertices;
 VBO splinesVboColors;
 VAO splinesVao;
 
+// track
+VBO railVerticesVBO;
+VBO railColorsVBO;
+VAO railVAO;
+
 // axis for debugging
 VBO axisVboVertices;
 VBO axisVboColors;
 VAO axisVao;
 
-float upos = 0;
-int currPoint = 0;
+// for animating the motion
+vector<Point> positions;
+vector<Point> tangents;
+vector<Point> normals;
+
+int currPos = 0;
 
 // Write a screenshot to the specified filename.
 void saveScreenshot(const char *filename)
@@ -284,26 +294,11 @@ void displayFunc()
   glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
   // cout << "upos " << upos << endl;
-  if (upos >= 1)
-  {
-    upos = 0;
-    currPoint = (currPoint + 1) % spline.numControlPoints;
-  }
+  Point& pos = positions[currPos];
+  Point& tangent = tangents[currPos];
+  Point& normal = normals[currPos];
 
-  // increment upos so we move forward
-  upos += 0.01;
-
-  // calculate Catmull-Rom matrices
-  float *R = calcMC(currPoint);
-
-  // calculate position
-  Point pos = calculatePosition(upos, R);
-
-  // calculate tangent
-  Point tangent = calculateTangent(upos, R);
-
-  // important :)
-  delete[] R;
+  pos = pos + normal;
 
   // Set up the camera position, focus point, and the up vector.
   matrix.SetMatrixMode(OpenGLMatrix::ModelView);
@@ -311,7 +306,10 @@ void displayFunc()
   // bux fix: needed to add tangent to position to get correct direction
   matrix.LookAt(pos.x, pos.y, pos.z,
                 pos.x + tangent.x, pos.y + tangent.y, pos.z + tangent.z,
-                0.0, 1.0, 0.0);
+                normal.x, normal.y, normal.z);
+
+  // move forward
+  currPos = (currPos + 1) % positions.size();
 
   // matrix.LookAt(0, 3, 5,
   //               0, 0, -1,
@@ -353,8 +351,11 @@ void displayFunc()
 
   // Execute the rendering.
   // Bind the VAO that we want to render. Remember, one object = one VAO.
-  splinesVao.Bind();
-  glDrawArrays(GL_LINES, 0, numSplineVertices);
+  // splinesVao.Bind();
+  // glDrawArrays(GL_LINES, 0, numSplineVertices);
+
+  railVAO.Bind();
+  glDrawArrays(GL_TRIANGLES, 0, numRailVertices);
 
   axisVao.Bind();
   glDrawArrays(GL_LINES, 0, 6);
@@ -417,17 +418,22 @@ void initScene(int argc, char *argv[])
     delete[] R;
   }
 
+  // connect all the shit together
+  numSplineVertices = (int)splineVertices.size() / 3;
+  splinesVboVertices.Gen(numSplineVertices, 3, splineVertices.data(), GL_STATIC_DRAW); // 3 values per position
+  splinesVboColors.Gen(numSplineVertices, 4, splineColors.data(), GL_STATIC_DRAW);     // 4 values per color
+
+  splinesVao.Gen();
+  splinesVao.ConnectPipelineProgramAndVBOAndShaderVariable(&pipelineProgram, &splinesVboVertices, "position");
+  splinesVao.ConnectPipelineProgramAndVBOAndShaderVariable(&pipelineProgram, &splinesVboColors, "color");
+
   /*****************************************************************
                                 LEVEL 3
   *****************************************************************/
 
-  // // calculate tangent
-  // vector<float> tangentMatrix = {3 * u * u, 2 * u, 1, 0};
-  // float t[3];
-  // MultiplyMatrices(1, 4, 3, posMatrix.data(), R, t);
-  // Point tangent(t);
   vector<float> railVertices;
   vector<float> railColors;
+  vector<float> railNormals;
 
   float arbitraryV[3] = {1,
                          0,
@@ -450,7 +456,7 @@ void initScene(int argc, char *argv[])
       Point P0 = calculatePosition(u, R);
 
       // calculate tangent
-      Point T0 = calculateTangent(u, R);
+      Point T0 = calculateTangent(u, R).normalize();
 
       // initialization for the first point
       Point N0(0, 0, 0);
@@ -463,7 +469,7 @@ void initScene(int argc, char *argv[])
       Point B0 = crossProduct(T0, N0).normalize();
 
       // Now calculate the necessary vertices
-      float alpha = 2;
+      float alpha = 0.2;
       Point V0 = P0 + alpha * (-N0 + B0);
       Point V1 = P0 + alpha * (N0 + B0);
       Point V2 = P0 + alpha * (N0 + -B0);
@@ -480,23 +486,45 @@ void initScene(int argc, char *argv[])
       }
       else
       {
+        // form rail segment
         Point& V4 = prev4[0];
         Point& V5 = prev4[1];
         Point& V6 = prev4[2];
         Point& V7 = prev4[3];
 
         addTriangleToVector(V0, V1, V4, railVertices);
-        addTriangleToVector(V0, V1, V5, railVertices);
+        addTriangleToVector(V1, V4, V5, railVertices);
+        addTriangleColorsToVector(V0, V1, V4, railColors);
+        addTriangleColorsToVector(V1, V4, V5, railColors);
+        addTriangleNormalToVector(B0, railNormals);
+        addTriangleNormalToVector(B0, railNormals);
 
         addTriangleToVector(V1, V2, V5, railVertices);
-        addTriangleToVector(V1, V2, V6, railVertices);
+        addTriangleToVector(V2, V5, V6, railVertices);
+        addTriangleColorsToVector(V1, V2, V5, railColors);
+        addTriangleColorsToVector(V2, V5, V6, railColors);
+        addTriangleNormalToVector(N0, railNormals);
+        addTriangleNormalToVector(N0, railNormals);
 
         addTriangleToVector(V2, V3, V6, railVertices);
-        addTriangleToVector(V2, V3, V7, railVertices);
+        addTriangleToVector(V3, V6, V7, railVertices);
+        addTriangleColorsToVector(V2, V3, V6, railColors);
+        addTriangleColorsToVector(V3, V6, V7, railColors);
+        addTriangleNormalToVector(-B0, railNormals);
+        addTriangleNormalToVector(-B0, railNormals);
 
         addTriangleToVector(V3, V0, V7, railVertices);
-        addTriangleToVector(V3, V0, V4, railVertices);
+        addTriangleToVector(V0, V7, V4, railVertices);
+        addTriangleColorsToVector(V3, V0, V7, railColors);
+        addTriangleColorsToVector(V0, V7, V4, railColors);
+        addTriangleNormalToVector(-N0, railNormals);
+        addTriangleNormalToVector(-N0, railNormals);
       }
+
+      // save position, tangent, and normal for rollercoaster motions
+      positions.push_back(P0);
+      tangents.push_back(T0);
+      normals.push_back(N0);
 
       // Save the vertices for the next calculation
       prev4.clear();
@@ -512,13 +540,14 @@ void initScene(int argc, char *argv[])
     delete[] R;
   }
 
-  numSplineVertices = (int)splineVertices.size() / 3;
-  splinesVboVertices.Gen(numSplineVertices, 3, splineVertices.data(), GL_STATIC_DRAW); // 3 values per position
-  splinesVboColors.Gen(numSplineVertices, 4, splineColors.data(), GL_STATIC_DRAW);     // 4 values per color
+  // connect all this shit again
+  numRailVertices = (int)railVertices.size() / 3;
+  railVerticesVBO.Gen(numRailVertices, 3, railVertices.data(), GL_STATIC_DRAW);
+  railColorsVBO.Gen(numRailVertices, 4, railNormals.data(), GL_STATIC_DRAW);
 
-  splinesVao.Gen();
-  splinesVao.ConnectPipelineProgramAndVBOAndShaderVariable(&pipelineProgram, &splinesVboVertices, "position");
-  splinesVao.ConnectPipelineProgramAndVBOAndShaderVariable(&pipelineProgram, &splinesVboColors, "color");
+  railVAO.Gen();
+  railVAO.ConnectPipelineProgramAndVBOAndShaderVariable(&pipelineProgram, &railVerticesVBO, "position");
+  railVAO.ConnectPipelineProgramAndVBOAndShaderVariable(&pipelineProgram, &railColorsVBO, "color");
 
   // debugging
   float axis_length = 4;

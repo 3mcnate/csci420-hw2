@@ -256,4 +256,18 @@ void addTriangleToVector(const Point &p1, const Point &p2, const Point &p3, vect
   addPointToVector(p3, vec);
 }
 
+void addTriangleColorsToVector(const Point &p1, const Point &p2, const Point &p3, vector<float> &vec)
+{
+  addColorToVector(p1, vec);
+  addColorToVector(p2, vec);
+  addColorToVector(p3, vec);
+}
+
+void addTriangleNormalToVector(const Point& n, vector<float> &vec)
+{
+  addColorToVector(n, vec);
+  addColorToVector(n, vec);
+  addColorToVector(n, vec);
+}
+
 #endif
