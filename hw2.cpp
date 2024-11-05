@@ -94,7 +94,7 @@ VAO splinesVao;
 
 // track
 VBO railVerticesVBO;
-VBO railColorsVBO;
+VBO railNormalsVBO;
 VAO railVAO;
 
 // axis for debugging
@@ -410,11 +410,12 @@ void initScene(int argc, char *argv[])
   vector<float> groundVertices;
   vector<float> groundUVMap;
 
-  const float textureSize = 100;
-  TexturePoint p1(textureSize, -textureSize, textureSize, 1, 1);
-  TexturePoint p2(textureSize, -textureSize, -textureSize, 1, 0);
-  TexturePoint p3(-textureSize, -textureSize, -textureSize, 0, 0);
-  TexturePoint p4(-textureSize, -textureSize, textureSize, 0, 1);
+  const float textureSize = 40;
+  const float depth = 20;
+  TexturePoint p1(textureSize, -depth, textureSize, 1, 1);
+  TexturePoint p2(textureSize, -depth, -textureSize, 1, 0);
+  TexturePoint p3(-textureSize, -depth, -textureSize, 0, 0);
+  TexturePoint p4(-textureSize, -depth, textureSize, 0, 1);
 
   addTextureTriangleToVectors(p1, p2, p3, groundVertices, groundUVMap);
   addTextureTriangleToVectors(p1, p3, p4, groundVertices, groundUVMap);
@@ -581,12 +582,12 @@ void initScene(int argc, char *argv[])
   // connect all this shit again
   numRailVertices = (int)railVertices.size() / 3;
   railVerticesVBO.Gen(numRailVertices, 3, railVertices.data(), GL_STATIC_DRAW);
-  railColorsVBO.Gen(numRailVertices, 4, railNormals.data(), GL_STATIC_DRAW);
+  railNormalsVBO.Gen(numRailVertices, 4, railNormals.data(), GL_STATIC_DRAW);
   // NOTE: Normals are being used for colors  ^^^
 
   railVAO.Gen();
   railVAO.ConnectPipelineProgramAndVBOAndShaderVariable(&milestonePipelineProgram, &railVerticesVBO, "position");
-  railVAO.ConnectPipelineProgramAndVBOAndShaderVariable(&milestonePipelineProgram, &railColorsVBO, "color");
+  railVAO.ConnectPipelineProgramAndVBOAndShaderVariable(&milestonePipelineProgram, &railNormalsVBO, "normal");
 
   /*****************************************************************
                             AXIS DEBUGGING

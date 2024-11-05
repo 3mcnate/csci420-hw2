@@ -1,7 +1,7 @@
 #version 150
 
 in vec3 position;
-in vec4 color;
+in vec4 normal;
 
 uniform mat4 modelViewMatrix;
 uniform mat4 projectionMatrix;
@@ -14,6 +14,6 @@ void main()
   gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0f);
 
   // compute the vertex color (into col)
-  col = color;
+  col = normal;
 }
 
