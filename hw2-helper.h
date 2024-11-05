@@ -8,6 +8,7 @@
 #include "openGLHeader.h"
 #include "imageIO.h"
 #include "point.h"
+#include "texturePoint.h"
 
 // Contains the control points of the spline.
 struct Spline
@@ -271,20 +272,30 @@ void addTriangleNormalToVector(const Point &n, vector<float> &vec)
   addColorToVector(n, vec);
 }
 
-void addUVPointToVector(const float x, const float y, vector<float> &vec)
+void addUVTriangleToVector(const TexturePoint &p1, const TexturePoint &p2, const TexturePoint &p3, vector<float> &UVVec)
 {
-  vec.push_back(x);
-  vec.push_back(y);
+  UVVec.push_back(p1.s);
+  UVVec.push_back(p1.t);
+  UVVec.push_back(p2.s);
+  UVVec.push_back(p2.t);
+  UVVec.push_back(p3.s);
+  UVVec.push_back(p3.t);
+}
+
+void addTextureTriangleToVectors(const TexturePoint &p1, const TexturePoint &p2, const TexturePoint &p3, vector<float> &positionVec, vector<float> &UVVec)
+{
+  addTriangleToVector(p1, p2, p3, positionVec);
+  addUVTriangleToVector(p1, p2, p3, UVVec);
 }
 
 void setTextureUnit(GLuint program, GLint unit)
 {
   // select texture unit affected by subsequent texture calls
-  glActiveTexture(unit); 
-  
+  glActiveTexture(unit);
+
   // get a handle to the “textureImage” shader variable
   GLint h_textureImage = glGetUniformLocation(program, "textureImage");
-  
+
   // deem the shader variable “textureImage” to read from texture unit “unit”
   glUniform1i(h_textureImage, unit - GL_TEXTURE0);
 }
