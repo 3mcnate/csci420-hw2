@@ -267,9 +267,9 @@ void addTriangleColorsToVector(const Point &p1, const Point &p2, const Point &p3
 
 void addTriangleNormalToVector(const Point &n, vector<float> &vec)
 {
-  addColorToVector(n, vec);
-  addColorToVector(n, vec);
-  addColorToVector(n, vec);
+  addPointToVector(n, vec);
+  addPointToVector(n, vec);
+  addPointToVector(n, vec);
 }
 
 void addUVTriangleToVector(const TexturePoint &p1, const TexturePoint &p2, const TexturePoint &p3, vector<float> &UVVec)
@@ -298,6 +298,18 @@ void setTextureUnit(GLuint program, GLint unit)
 
   // deem the shader variable “textureImage” to read from texture unit “unit”
   glUniform1i(h_textureImage, unit - GL_TEXTURE0);
+}
+
+void setUniform3f(GLuint program, const char* varName, float x, float y, float z)
+{
+  GLint location = glGetUniformLocation(program, varName);
+  glUniform3f(location, x, y, z);
+}
+
+void setUniform4f(GLuint program, const char* varName, float x, float y, float z, float w)
+{
+  GLint location = glGetUniformLocation(program, varName);
+  glUniform4f(location, x, y, z, w);
 }
 
 #endif

@@ -109,6 +109,15 @@ vector<Point> binormals;
 
 int currPos = 0;
 
+// determined through experimentation
+float La = 2;
+float Ld = 0.7;
+float Ls = 0.3;
+float ka = 0.2;
+float kd = 0.7;
+float ks = 0.9;
+float aph = 64.0;
+
 // Write a screenshot to the specified filename.
 void saveScreenshot(const char *filename)
 {
@@ -266,7 +275,14 @@ void keyboardFunc(unsigned char key, int x, int y)
 {
   switch (key)
   {
-  case 27:   // ESC key
+  case 27: // ESC key
+    cout << "La: " << La << endl;
+    cout << "Ld: " << Ld << endl;
+    cout << "Ls: " << Ls << endl;
+    cout << "ka: " << ka << endl;
+    cout << "kd: " << kd << endl;
+    cout << "ks: " << ks << endl;
+    cout << "aph: " << aph << endl;
     exit(0); // exit the program
     break;
 
@@ -277,6 +293,55 @@ void keyboardFunc(unsigned char key, int x, int y)
   case 'x':
     // Take a screenshot.
     saveScreenshot("screenshot.jpg");
+    break;
+
+  case 'q':
+    La += 0.1;
+    break;
+  case 'a':
+    La -= 0.1;
+    break;
+
+  case 'w':
+    Ld += 0.1;
+    break;
+  case 's':
+    Ld -= 0.1;
+    break;
+
+  case 'e':
+    Ls += 0.1;
+    break;
+  case 'd':
+    Ls -= 0.1;
+    break;
+
+  case 'r':
+    ka += 0.1;
+    break;
+  case 'f':
+    ka -= 0.1;
+    break;
+
+  case 't':
+    kd += 0.1;
+    break;
+  case 'g':
+    kd -= 0.1;
+    break;
+
+  case 'y':
+    ks += 0.1;
+    break;
+  case 'h':
+    ks -= 0.1;
+    break;
+
+  case 'u':
+    aph += 0.1;
+    break;
+  case 'j':
+    aph -= 0.1;
     break;
 
   case 'z':
@@ -315,33 +380,6 @@ void displayFunc()
   // move forward
   currPos = (currPos + 1) % positions.size();
 
-  // matrix.LookAt(0, 3, 5,
-  //               0, 0, -1,
-  //               0, 1, 0);
-
-#define CREATIVE_MODE
-#ifdef CREATIVE_MODE
-  // In here, you can do additional modeling on the object, such as performing translations, rotations and scales.
-  // x, y, z has to be a unit vector
-
-  // Rotation about x axis
-  matrix.Rotate(terrainRotate[0], 1.0, 0.0, 0.0);
-
-  // Rotation about y axis
-  matrix.Rotate(terrainRotate[1], 0.0, 1.0, 0.0);
-
-  // Rotation about z axis
-  matrix.Rotate(terrainRotate[2], 0.0, 0.0, 1.0);
-
-  // Scale in the x direction
-  matrix.Scale(terrainScale[0], terrainScale[1], terrainScale[2]);
-
-  matrix.Translate(terrainTranslate[0], terrainTranslate[1], terrainTranslate[2]);
-
-  // Read the current modelview and projection matrices from our helper class.
-  // The matrices are only read here; nothing is actually communicated to OpenGL yet.
-#endif
-
   float modelViewMatrix[16];
   matrix.SetMatrixMode(OpenGLMatrix::ModelView);
   matrix.GetMatrix(modelViewMatrix);
@@ -350,16 +388,36 @@ void displayFunc()
   matrix.SetMatrixMode(OpenGLMatrix::Projection);
   matrix.GetMatrix(projectionMatrix);
 
+  float normalMatrix[16];
+  matrix.SetMatrixMode(OpenGLMatrix::ModelView);
+  matrix.GetNormalMatrix(normalMatrix);
+
+  float lightDirection[4] = {0, 1, -1, 0}; // should the last coordinate be 1.0?
+  normalizeVector(lightDirection);
+  float viewLightDirection[4];
+  MultiplyMatrices(4, 4, 1, modelViewMatrix, lightDirection, viewLightDirection);
+
   // stupid ass order
   milestonePipelineProgram.Bind();
   milestonePipelineProgram.SetUniformVariableMatrix4fv("modelViewMatrix", GL_FALSE, modelViewMatrix);
   milestonePipelineProgram.SetUniformVariableMatrix4fv("projectionMatrix", GL_FALSE, projectionMatrix);
+  milestonePipelineProgram.SetUniformVariableMatrix4fv("normalMatrix", GL_FALSE, normalMatrix);
+
+  GLuint milestoneProgram_h = milestonePipelineProgram.GetProgramHandle();
+
+  setUniform3f(milestoneProgram_h, "viewLightDirection", viewLightDirection[0], viewLightDirection[1], viewLightDirection[2]);
+  setUniform4f(milestoneProgram_h, "La", La, La, La, 1);
+  setUniform4f(milestoneProgram_h, "Ld", Ld, Ld, Ld, 1);
+  setUniform4f(milestoneProgram_h, "Ls", Ls, Ls, Ls, 1);
+  setUniform4f(milestoneProgram_h, "ka", ka, ka, ka, 1);
+  setUniform4f(milestoneProgram_h, "kd", kd, kd, kd, 1);
+  setUniform4f(milestoneProgram_h, "ks", ks, ks, ks, 1);
+  milestonePipelineProgram.SetUniformVariablef("alpha", aph);
 
   railVAO.Bind();
   glDrawArrays(GL_TRIANGLES, 0, numRailVertices);
 
   // make sure to switch to the texture pipeline program
-
   texturePipelineProgram.Bind();
   texturePipelineProgram.SetUniformVariableMatrix4fv("modelViewMatrix", GL_FALSE, modelViewMatrix);
   texturePipelineProgram.SetUniformVariableMatrix4fv("projectionMatrix", GL_FALSE, projectionMatrix);
@@ -382,7 +440,7 @@ void initScene(int argc, char *argv[])
   // Enable z-buffering (i.e., hidden surface removal using the z-buffer algorithm).
   glEnable(GL_DEPTH_TEST);
 
-  if (milestonePipelineProgram.BuildShadersFromFiles(shaderBasePath, "milestoneVertexShader.glsl", "milestoneFragmentShader.glsl") != 0)
+  if (milestonePipelineProgram.BuildShadersFromFiles(shaderBasePath, "phongVertexShader.glsl", "phongFragmentShader.glsl") != 0)
   {
     cout << "Failed to build the milestone pipeline program." << endl;
     throw 1;
@@ -582,7 +640,7 @@ void initScene(int argc, char *argv[])
   // connect all this shit again
   numRailVertices = (int)railVertices.size() / 3;
   railVerticesVBO.Gen(numRailVertices, 3, railVertices.data(), GL_STATIC_DRAW);
-  railNormalsVBO.Gen(numRailVertices, 4, railNormals.data(), GL_STATIC_DRAW);
+  railNormalsVBO.Gen(numRailVertices, 3, railNormals.data(), GL_STATIC_DRAW);
   // NOTE: Normals are being used for colors  ^^^
 
   railVAO.Gen();
