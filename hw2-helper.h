@@ -210,6 +210,7 @@ Point calculatePosition(float u, float *R)
   return Point(p);
 }
 
+// NOTE: returns normalized tangent
 Point calculateTangent(float u, float *R)
 {
   vector<float> tangentMatrix = {3 * u * u, 2 * u, 1, 0};
@@ -263,11 +264,29 @@ void addTriangleColorsToVector(const Point &p1, const Point &p2, const Point &p3
   addColorToVector(p3, vec);
 }
 
-void addTriangleNormalToVector(const Point& n, vector<float> &vec)
+void addTriangleNormalToVector(const Point &n, vector<float> &vec)
 {
   addColorToVector(n, vec);
   addColorToVector(n, vec);
   addColorToVector(n, vec);
+}
+
+void addUVPointToVector(const float x, const float y, vector<float> &vec)
+{
+  vec.push_back(x);
+  vec.push_back(y);
+}
+
+void setTextureUnit(GLuint program, GLint unit)
+{
+  // select texture unit affected by subsequent texture calls
+  glActiveTexture(unit); 
+  
+  // get a handle to the “textureImage” shader variable
+  GLint h_textureImage = glGetUniformLocation(program, "textureImage");
+  
+  // deem the shader variable “textureImage” to read from texture unit “unit”
+  glUniform1i(h_textureImage, unit - GL_TEXTURE0);
 }
 
 #endif
