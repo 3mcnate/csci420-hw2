@@ -110,13 +110,15 @@ vector<Point> binormals;
 int currPos = 0;
 
 // determined through experimentation
-float La = 2;
-float Ld = 0.7;
+float La = 1.3;
+float Ld = 1;
 float Ls = 0.3;
 float ka = 0.2;
 float kd = 0.7;
-float ks = 0.9;
+float ks = 1.1;
 float aph = 64.0;
+
+int counter = 0;
 
 // Write a screenshot to the specified filename.
 void saveScreenshot(const char *filename)
@@ -134,6 +136,15 @@ void saveScreenshot(const char *filename)
 
 void idleFunc()
 {
+  int modulo = 2;
+  if (currPos % modulo == 0 && counter < 1000)
+  {
+    char buf[32];
+    snprintf(buf, 32, "animation/%03d.jpg", counter);
+    counter++;
+    saveScreenshot(buf);
+  }
+
   // Notify GLUT that it should call displayFunc.
   glutPostRedisplay();
 }
@@ -574,7 +585,7 @@ void initScene(int argc, char *argv[])
       Point B0 = crossProduct(T0, N0).normalize();
 
       // Now calculate the necessary vertices
-      float alpha = 0.15;
+      float alpha = 0.1;
       Point V0 = P0 + alpha * (-N0 + B0);
       Point V1 = P0 + alpha * (N0 + B0);
       Point V2 = P0 + alpha * (N0 + -B0);
